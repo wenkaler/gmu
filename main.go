@@ -1,28 +1,13 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
-)
-
-// Colors for terminal output
-const (
-	ColorRed    = "\033[31m"
-	ColorGreen  = "\033[32m"
-	ColorYellow = "\033[33m"
-	ColorBlue   = "\033[34m"
-	ColorReset  = "\033[0m"
 )
 
 // Version of the application
-const Version = "1.1.1"
+const Version = "1.2.0"
 
 var (
 	showHelp         = flag.Bool("h", false, "Show help")
@@ -31,13 +16,9 @@ var (
 	showShortVersion = flag.Bool("v", false, "Show version")
 	clearFlag        = flag.Bool("clear", false, "Remove all replace directives")
 	clearFlagShort   = flag.Bool("cl", false, "Short for -clear")
+	printReplaces    = flag.Bool("p", false, "Print all replace directives")
 	maxInputLen      = 256 // Maximum allowed input length
 )
-
-type Dependency struct {
-	Path    string
-	Version string
-}
 
 func init() {
 	flag.Usage = func() {
@@ -47,6 +28,7 @@ func init() {
 		fmt.Println("  -h, --help      Show this help message")
 		fmt.Println("  -v, --version   Show version information")
 		fmt.Println("  -cl, --clear    Remove all replace directives")
+		fmt.Println("  -p              Print all replace directives")
 		fmt.Printf("\n%sExample:%s\n", ColorYellow, ColorReset)
 		fmt.Println("  goreplace proto")
 	}
@@ -62,6 +44,14 @@ func main() {
 
 	if *showVersion || *showShortVersion {
 		fmt.Printf("goreplace version %s%s%s\n", ColorGreen, Version, ColorReset)
+		return
+	}
+
+	if *printReplaces {
+		if err := printReplacesFunc(); err != nil {
+			fmt.Printf("Error printing replaces: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -127,225 +117,4 @@ func main() {
 
 	printSuccess(fmt.Sprintf("Added replace: %s => %s", selected, localPath))
 	printSuccess("You need run: go mod tidy - to update go.sum")
-}
-
-func printError(msg string) {
-	fmt.Printf("%sError: %s%s\n", ColorRed, msg, ColorReset)
-}
-
-func printSuccess(msg string) {
-	fmt.Printf("%s%s%s\n", ColorGreen, msg, ColorReset)
-}
-
-func suggestAlternativePath(modulePath string) string {
-	basePath := removeVersionFromPath(modulePath)
-	versionlessPath := filepath.Join(os.Getenv("GOPATH"), "src", basePath)
-	if _, err := os.Stat(versionlessPath); err == nil {
-		return versionlessPath
-	}
-	return ""
-}
-
-func confirmAlternativePath() bool {
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(strings.ToLower(input)) != "n"
-}
-
-func findLocalPath(modulePath string) (string, error) {
-	originalPath := filepath.Join(os.Getenv("GOPATH"), "src", modulePath)
-	if _, err := os.Stat(originalPath); err == nil {
-		return originalPath, nil
-	}
-
-	basePath := removeVersionFromPath(modulePath)
-	if basePath != modulePath {
-		versionlessPath := filepath.Join(os.Getenv("GOPATH"), "src", basePath)
-		if _, err := os.Stat(versionlessPath); err == nil {
-			return versionlessPath, nil
-		}
-	}
-
-	return "", fmt.Errorf("local copy not found: tried %s and %s", originalPath,
-		filepath.Join(os.Getenv("GOPATH"), "src", basePath))
-}
-
-func removeVersionFromPath(path string) string {
-	re := regexp.MustCompile(`(/v\d+)$`)
-	return re.ReplaceAllString(path, "")
-}
-
-func parseGoMod(content string) ([]Dependency, map[string]bool) {
-	var dependencies []Dependency
-	replaces := make(map[string]bool)
-
-	lines := strings.Split(content, "\n")
-	inRequire := false
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(line, "require ("):
-			inRequire = true
-		case strings.HasPrefix(line, "require ") && !inRequire:
-			line = strings.TrimPrefix(line, "require ")
-			if dep := parseRequireLine(line); dep != nil {
-				dependencies = append(dependencies, *dep)
-			}
-		case inRequire && line == ")":
-			inRequire = false
-		case inRequire:
-			if dep := parseRequireLine(line); dep != nil {
-				dependencies = append(dependencies, *dep)
-			}
-		case strings.HasPrefix(line, "replace "):
-			if path := extractReplacePath(line); path != "" {
-				replaces[path] = true
-			}
-		}
-	}
-
-	return dependencies, replaces
-}
-
-func parseRequireLine(line string) *Dependency {
-	if strings.Contains(line, "indirect") {
-		return nil
-	}
-
-	if idx := strings.Index(line, "//"); idx != -1 {
-		line = strings.TrimSpace(line[:idx])
-	}
-
-	parts := strings.Fields(line)
-	if len(parts) < 2 {
-		return nil
-	}
-
-	return &Dependency{
-		Path:    parts[0],
-		Version: parts[1],
-	}
-}
-
-func extractReplacePath(line string) string {
-	parts := strings.Split(line, "=>")
-	if len(parts) < 2 {
-		return ""
-	}
-	return strings.TrimSpace(strings.TrimPrefix(parts[0], "replace "))
-}
-
-func filterDependencies(deps []Dependency, replaces map[string]bool, partialName string) []string {
-	var matched []string
-	for _, dep := range deps {
-		if replaces[dep.Path] {
-			continue
-		}
-		if strings.Contains(dep.Path, partialName) {
-			matched = append(matched, dep.Path)
-		}
-	}
-	return matched
-}
-
-func selectDependency(matched []string) (string, error) {
-	if len(matched) == 1 {
-		return matched[0], nil
-	}
-
-	fmt.Printf("\n%sMultiple matches found:%s\n", ColorYellow, ColorReset)
-	for i, m := range matched {
-		fmt.Printf("%s%d) %s%s\n", ColorBlue, i+1, m, ColorReset)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%sEnter the number of the desired package:%s ", ColorYellow, ColorReset)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("failed to read input")
-	}
-
-	input = strings.TrimSpace(input)
-	if len(input) > maxInputLen {
-		return "", fmt.Errorf("input too long")
-	}
-
-	idx, err := strconv.Atoi(input)
-	if err != nil || idx < 1 || idx > len(matched) {
-		return "", fmt.Errorf("invalid selection")
-	}
-
-	return matched[idx-1], nil
-}
-
-func confirmSelection(selected string) bool {
-	fmt.Printf("\n%sYou selected:%s %s%s%s\n", ColorYellow, ColorReset, ColorGreen, selected, ColorReset)
-	fmt.Printf("%sConfirm selection (press Enter to continue, any other key to cancel):%s ", ColorYellow, ColorReset)
-	confirm, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.TrimSpace(confirm) == ""
-}
-
-func replaceInGoMod(module, localPath string) error {
-	content, err := os.ReadFile("go.mod")
-	if err != nil {
-		return fmt.Errorf("failed to read go.mod: %w", err)
-	}
-
-	newReplace := fmt.Sprintf("\nreplace %s => %s\n", module, localPath)
-
-	tmpFile := "go.mod.tmp"
-	if err := os.WriteFile(tmpFile, append(content, newReplace...), 0644); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-
-	if err := os.Rename(tmpFile, "go.mod"); err != nil {
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	return nil
-}
-
-func clearReplaces() error {
-	content, err := os.ReadFile("go.mod")
-	if err != nil {
-		return fmt.Errorf("reading go.mod: %w", err)
-	}
-
-	var buffer bytes.Buffer
-	lines := strings.Split(string(content), "\n")
-	inReplaceSection := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		if inReplaceSection {
-			if strings.HasPrefix(trimmed, ")") {
-				inReplaceSection = false
-			}
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "replace (") {
-			inReplaceSection = true
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "replace") {
-			continue
-		}
-
-		buffer.WriteString(line)
-		buffer.WriteByte('\n')
-	}
-
-	tmpFile := "go.mod.tmp"
-	if err := os.WriteFile(tmpFile, buffer.Bytes(), 0644); err != nil {
-		return fmt.Errorf("writing temp file: %w", err)
-	}
-	return os.Rename(tmpFile, "go.mod")
 }

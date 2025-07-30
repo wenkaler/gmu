@@ -14,3 +14,7 @@ pkg/
 # Файлы зависимостей
 vendor/
 go.mod.sum
+1
+.env
+goreplace
+mem.md

@@ -53,10 +53,12 @@ The tool will:
 
 ## Flags
 
-| Flag        | Short | Description           |
-|-------------|-------|------------------------|
-| `--help`    | `-h`  | Show help              |
-| `--version` |       | Show version number    |
+| Flag        | Short | Description                    |
+|-------------|-------|--------------------------------|
+| `--help`    | `-h`  | Show help                      |
+| `--version` | `-v`  | Show version number            |
+| `--clear`   | `-cl` | Remove all replace directives  |
+|             | `-p`  | Print all replace directives   |
 
 ---
 
@@ -65,4 +67,14 @@ The tool will:
 - Go 1.16 or newer
 - `GOPATH` set up correctly
 - A valid `go.mod` file in current directory
+
+---
+
+## Development
+
+The codebase is structured as follows:
+- `main.go`: Entry point and command-line flag handling.
+- `parser.go`: `go.mod` parsing and manipulation logic.
+- `dependency.go`: Dependency selection and path resolution.
+- `color.go`: User interface functions (colors, prompts).
 
