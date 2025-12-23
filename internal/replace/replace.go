@@ -72,7 +72,17 @@ func Clear(log *slog.Logger) error {
 		return err
 	}
 	fmt.Println("All replace directives removed from go.mod")
-	logger.PrintSuccess("You need run: go mod tidy - to update go.sum")
+
+	// Run go mod tidy
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to execute go mod tidy: %v\nOutput:\n%s", err, string(output))
+	}
+
+	logger.PrintSuccess("Executed: go mod tidy")
 	return nil
 }
 

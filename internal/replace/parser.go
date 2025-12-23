@@ -61,39 +61,27 @@ func ClearReplaces() error {
 		return fmt.Errorf("parsing go.mod: %w", err)
 	}
 
-	// Remove all replaces
-	// Iterating and dropping might be tricky if we modify slice in place,
-	// but modfile provides DropReplace.
-	// We need to collect what to drop first to avoid index issues if we were iterating indices,
-	// but range over slice is safe if we don't modify the slice structure we are ranging over immediately, or?
-	// modfile.Replace is a slice pointer.
-	// Better: just clear the list?
-	// f.Replace = nil ? No, formatting might rely on Cleanup.
-
-	// Let's iterate and call DropReplace for each.
-	for _, r := range f.Replace {
-		if err := f.DropReplace(r.Old.Path, r.Old.Version); err != nil {
-			return fmt.Errorf("dropping replace: %w", err)
+	// Direct syntax manipulation to avoid DropReplace panic and ensure removal.
+	// f.Format() uses f.Syntax, not f.Replace struct field.
+	var newStmts []modfile.Expr
+	for _, stmt := range f.Syntax.Stmt {
+		keep := true
+		switch x := stmt.(type) {
+		case *modfile.Line:
+			if len(x.Token) > 0 && x.Token[0] == "replace" {
+				keep = false
+			}
+		case *modfile.LineBlock:
+			if len(x.Token) > 0 && x.Token[0] == "replace" {
+				keep = false
+			}
+		}
+		if keep {
+			newStmts = append(newStmts, stmt)
 		}
 	}
-	// Do it again to be sure? No, DropReplace should work.
-	// Wait, if I iterate `f.Replace` and call `DropReplace`, `DropReplace` modifies `f.Replace`?
-	// Yes, `DropReplace` modifies the slice. This is unsafe while iterating.
-
-	// Correct approach: collect params, then drop.
-	type replaceParam struct {
-		OldPath, OldVersion string
-	}
-	var toDrop []replaceParam
-	for _, r := range f.Replace {
-		toDrop = append(toDrop, replaceParam{r.Old.Path, r.Old.Version})
-	}
-
-	for _, p := range toDrop {
-		if err := f.DropReplace(p.OldPath, p.OldVersion); err != nil {
-			return fmt.Errorf("dropping replace %s: %w", p.OldPath, err)
-		}
-	}
+	f.Syntax.Stmt = newStmts
+	f.Replace = nil
 
 	f.Cleanup() // generic cleanup
 
