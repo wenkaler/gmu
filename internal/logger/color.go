@@ -1,4 +1,4 @@
-package main
+package logger
 
 import "fmt"
 
@@ -11,11 +11,10 @@ const (
 	ColorReset  = "\033[0m"
 )
 
-func printError(msg string) {
+func PrintError(msg string) {
 	fmt.Printf("%sError: %s%s\n", ColorRed, msg, ColorReset)
 }
 
-func printSuccess(msg string) {
+func PrintSuccess(msg string) {
 	fmt.Printf("%s%s%s\n", ColorGreen, msg, ColorReset)
 }
-

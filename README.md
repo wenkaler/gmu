@@ -1,80 +1,87 @@
-# goreplace
+# gmu (Go Mod Updater)
 
-[![Go](https://img.shields.io/badge/go-1.20+-blue)](https://golang.org)
-[![License](https://img.shields.io/github/license/wenkaler/goreplace)](https://github.com/wenkaler/goreplace)
+`gmu` - это универсальный инструмент для управления зависимостями в Go проектах. Он объединяет функциональность обновления feature-версий и локальной замены модулей.
 
-**goreplace** is a CLI tool that helps you replace Go module dependencies with local paths by modifying the `go.mod` file.
+[![Go](https://img.shields.io/badge/go-1.24+-blue)](https://golang.org)
+[![License](https://img.shields.io/github/license/wenkaler/gmu)](https://github.com/wenkaler/gmu)
 
-## Description
+## Описание
 
-This utility scans your `go.mod`, finds dependencies matching a given partial package name, and replaces them with a local path pointing to your filesystem (typically under `$GOPATH/src/`).
+Инструмент решает две основные задачи:
+1. **Update**: Автоматическое обновление зависимостей до специфических версий (например, feature-ветки вида `vX.Y.Z-task-1234`).
+2. **Replace**: Быстрая подмена (replace) зависимостей на локальные версии для разработки.
 
-It's useful during development when you want to test changes in a dependency without publishing it.
-
----
-
-## Installation
-
-You can install **goreplace** using `go install`:
+## Установка
 
 ```bash
-go install github.com/wenkaler/goreplace@latest
+go install github.com/wenkaler/gmu/cmd/gmu@latest
 ```
 
-Or build from source:
+Или сборка из исходников:
 
 ```bash
-git clone https://github.com/wenkaler/goreplace.git
-cd goreplace
-go build -o goreplace
+git clone https://github.com/wenkaler/gmu.git
+cd gmu
+go build -o gmu ./cmd/gmu
 ```
 
----
+## Использование
 
-## Usage
+### 1. Обновление зависимостей (Update)
+
+Сканирует `go.mod` и обновляет модули, соответствующие регулярному выражению, до версии с указанным суффиксом.
 
 ```bash
-Usage: goreplace <partial-package-name>
+# Обновить модули до версии с суффиксом -1234 (например v0.0.0-20230101-1234)
+gmu -f 1234
+
+# Обновить и применить изменения (go get)
+gmu -f 1234 -u
 ```
 
-### Example:
+Флаги:
+- `-f`, `--feature`: Суффикс версии (номер задачи).
+- `-u`: Применить обновления (выполнить `go get`).
+- `-r`: Регулярное выражение для фильтрации модулей (переопределяет конфиг).
+- `-e`: Исключить модули по регулярному выражению.
+
+### 2. Локальная замена (Replace)
+
+Удобная обертка для добавления директивы `replace` в `go.mod`. Ищет локальную копию модуля в `GOPATH`.
 
 ```bash
-goreplace proto
+# Найти модуль по части названия и заменить на локальный путь
+gmu replace my-lib
+
+# Очистить все replace директивы
+gmu replace --clear
+# или
+gmu replace -cl
 ```
 
-The tool will:
-1. Search for dependencies containing "proto" in `go.mod`
-2. Let you select one if multiple matches are found
-3. Try to locate the local copy of the module
-4. Add a `replace` directive in `go.mod` pointing to the local path
+### 3. Просмотр замен
+
+```bash
+gmu show
+```
+
+## Конфигурация
+
+Вы можете создать файл `config.yaml` в директории запуска для настройки параметров по умолчанию (для команды update):
+
+```yaml
+target_regex: "^github.com/mycompany/.*"
+exclude_patterns:
+  - ".*-api$"
+```
+
+## Структура проекта
+
+- `cmd/gmu`: Точка входа в приложение.
+- `internal/update`: Логика обновления версий.
+- `internal/replace`: Логика локальных замен.
+- `internal/config`: Загрузка конфигурации.
+- `internal/logger`: Логирование.
 
 ---
-
-## Flags
-
-| Flag        | Short | Description                    |
-|-------------|-------|--------------------------------|
-| `--help`    | `-h`  | Show help                      |
-| `--version` | `-v`  | Show version number            |
-| `--clear`   | `-cl` | Remove all replace directives  |
-|             | `-p`  | Print all replace directives   |
-
----
-
-## Requirements
-
-- Go 1.16 or newer
-- `GOPATH` set up correctly
-- A valid `go.mod` file in current directory
-
----
-
-## Development
-
-The codebase is structured as follows:
-- `main.go`: Entry point and command-line flag handling.
-- `parser.go`: `go.mod` parsing and manipulation logic.
-- `dependency.go`: Dependency selection and path resolution.
-- `color.go`: User interface functions (colors, prompts).
-
+**Примечание**: Проект является объединением утилит `goreplace` и `gmu`.

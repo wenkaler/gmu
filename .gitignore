@@ -3,6 +3,8 @@
 *.swp
 .vscode/
 .DS_Store
+gmu
+.agent
 
 # Артефакты сборки
 bin/

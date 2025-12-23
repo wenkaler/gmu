@@ -1,4 +1,4 @@
-package main
+package replace
 
 import (
 	"bufio"
@@ -8,29 +8,35 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/wenkaler/gmu/internal/logger"
 )
 
-type Dependency struct {
-	Path    string
-	Version string
-}
-
 func findLocalPath(modulePath string) (string, error) {
-	originalPath := filepath.Join(os.Getenv("GOPATH"), "src", modulePath)
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		// Fallback to default GOPATH
+		home, err := os.UserHomeDir()
+		if err == nil {
+			gopath = filepath.Join(home, "go")
+		}
+	}
+
+	originalPath := filepath.Join(gopath, "src", modulePath)
 	if _, err := os.Stat(originalPath); err == nil {
 		return originalPath, nil
 	}
 
 	basePath := removeVersionFromPath(modulePath)
 	if basePath != modulePath {
-		versionlessPath := filepath.Join(os.Getenv("GOPATH"), "src", basePath)
+		versionlessPath := filepath.Join(gopath, "src", basePath)
 		if _, err := os.Stat(versionlessPath); err == nil {
 			return versionlessPath, nil
 		}
 	}
 
 	return "", fmt.Errorf("local copy not found: tried %s and %s", originalPath,
-		filepath.Join(os.Getenv("GOPATH"), "src", basePath))
+		filepath.Join(gopath, "src", basePath))
 }
 
 func removeVersionFromPath(path string) string {
@@ -38,31 +44,18 @@ func removeVersionFromPath(path string) string {
 	return re.ReplaceAllString(path, "")
 }
 
-func filterDependencies(deps []Dependency, replaces map[string]bool, partialName string) []string {
-	var matched []string
-	for _, dep := range deps {
-		if replaces[dep.Path] {
-			continue
-		}
-		if strings.Contains(dep.Path, partialName) {
-			matched = append(matched, dep.Path)
-		}
-	}
-	return matched
-}
-
 func selectDependency(matched []string) (string, error) {
 	if len(matched) == 1 {
 		return matched[0], nil
 	}
 
-	fmt.Printf("\n%sMultiple matches found:%s\n", ColorYellow, ColorReset)
+	fmt.Printf("\n%sMultiple matches found:%s\n", logger.ColorYellow, logger.ColorReset)
 	for i, m := range matched {
-		fmt.Printf("%s%d) %s%s\n", ColorBlue, i+1, m, ColorReset)
+		fmt.Printf("%s%d) %s%s\n", logger.ColorBlue, i+1, m, logger.ColorReset)
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%sEnter the number of the desired package:%s ", ColorYellow, ColorReset)
+	fmt.Printf("%sEnter the number of the desired package:%s ", logger.ColorYellow, logger.ColorReset)
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("failed to read input")
@@ -82,8 +75,8 @@ func selectDependency(matched []string) (string, error) {
 }
 
 func confirmSelection(selected string) bool {
-	fmt.Printf("\n%sYou selected:%s %s%s%s\n", ColorYellow, ColorReset, ColorGreen, selected, ColorReset)
-	fmt.Printf("%sConfirm selection (press Enter to continue, any other key to cancel):%s ", ColorYellow, ColorReset)
+	fmt.Printf("\n%sYou selected:%s %s%s%s\n", logger.ColorYellow, logger.ColorReset, logger.ColorGreen, selected, logger.ColorReset)
+	fmt.Printf("%sConfirm selection (press Enter to continue, any other key to cancel):%s ", logger.ColorYellow, logger.ColorReset)
 	confirm, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	return strings.TrimSpace(confirm) == ""
 }
